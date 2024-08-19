@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件上传</title>
+</head>
+<body>
+    <h1>上传文件</h1>
+    <form id="uploadForm">
+        <label for="avatar">选择文件:</label>
+        <input type="file" id="avatar" name="avatar" accept="image/*">
+        <br>
+        <label for="code">Code:</label>
+        <input type="text" id="code" name="code" placeholder="Enter your code">
+        <br>
+        <label for="nickName">Nick Name:</label>
+        <input type="text" id="nickName" name="nickName" placeholder="Enter your nickname">
+        <br>
+        <button type="submit">上传文件</button>
+    </form>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', function(event) {
+            event.preventDefault(); // 阻止表单的默认提交行为
+
+            const form = this;
+            const formData = new FormData(form);
+
+            // 创建一个普通的表单数据对象
+            const plainFormData = {};
+            for (const [key, value] of formData.entries()) {
+                if (key !== 'avatar') { // 排除文件字段
+                    plainFormData[key] = value;
+                }
+            }
+
+            // 将普通表单数据转换为 x-www-form-urlencoded 格式
+            const urlEncodedData = new URLSearchParams(plainFormData);
+
+            // 使用 fetch 发送请求
+            fetch('http://localhost:5000/api/users/register', {
+                method: 'POST',
+                body: urlEncodedData,
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Success:', data);
+                alert('文件上传成功');
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('文件上传失败');
+            });
+        });
+    </script>
+</body>
+</html>

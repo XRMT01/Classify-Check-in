@@ -1,0 +1,9 @@
+{
+    "default": {
+      "minCheckinTime": "06:00",
+      "maxCheckinTime": "23:59",
+      "allowedLateMinutes": 1,
+      "maxDailyEntries": 5,
+      "rewardPointsPerCheckin": 12
+    }
+  }
