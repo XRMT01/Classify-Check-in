@@ -21,4 +21,10 @@ router.post('/update', authMiddleware, checkinsController.updateCheckin);
 // 上传图片路由
 router.post('/upload', authMiddleware, checkinsController.uploadImages);
 
+// 获取特定用户的打卡记录列表
+router.post('/getCheckins', authMiddleware, checkinsController.getUserCheckins);
+
+// 获取图片路由
+router.get('/getImage/:ID/:Time/:Name', checkinsController.getImage);
+
 module.exports = router;

@@ -31,7 +31,7 @@ exports.registerUser = async (req, res) => {
     try {
         connection = await getConnection();
         try {
-            const { code, nickName } = req.body;
+            let { code, nickName, Comm } = req.body;
 
             // 使用微信小程序的 code 获取 openid 和 session key
             const sessionData = await getSessionData(code);
@@ -42,7 +42,7 @@ exports.registerUser = async (req, res) => {
 
             // 检查用户是否存在
 
-            const [rows] = await connection.query('SELECT * FROM UserData WHERE Uid = ?', [openid]);
+            let [rows] = await connection.query('SELECT * FROM UserData WHERE Uid = ?', [openid]);
 
             // 创建用户文件夹
             const userFolder = path.join('uploads', 'User', openid);
@@ -63,22 +63,39 @@ exports.registerUser = async (req, res) => {
             let sessionToken = null;
             let avatarFilename = 'default-avatar.png'; // 默认头像文件名
 
+            //判断是否为身份
+            let comms;
+            switch (Comm) {
+                case "管理员":
+                    comms = 0;
+                    break;
+                case "丽景社区":
+                    comms = 1;
+                    break;
+                default:
+                    comms = -4;
+                    Comm = "空";
+                    break;
+            }
+            
+
+
             if (rows.length === 0) {
                 // 如果用户不存在，则创建新用户
                 sessionToken = generateSessionToken();
                 const regTime = Date.now();
-                await connection.query(
-                    'INSERT INTO UserData (Uid, AvatarUrl, Name, SessionToken, RegTime) VALUES (?, ?, ?, ?, ?)',
-                    [openid, avatarFilename, nickName, sessionToken, regTime]
+                [rows] =await connection.query(
+                    'INSERT INTO UserData (Uid, AvatarUrl, Name,  State, Community, SessionToken, RegTime) VALUES (?, ?, ?, ?, ?, ?,  ?)',
+                    [openid, avatarFilename, nickName, comms, Comm, sessionToken, regTime]
                 );
             } else {
                 // 如果用户已存在，则更新昵称
                 const userId = rows[0].Uid;
                 sessionToken = generateSessionToken(); // 生成新的 session ID
                 if (nickName !== rows[0].NickName) {
-                    await connection.query('UPDATE UserData SET Name = ? WHERE Uid = ?', [nickName, openid]);
+                    [rows] = await connection.query('UPDATE UserData SET Name = ? WHERE Uid = ?', [nickName, openid]);
                 }
-                await connection.query('UPDATE UserData SET SessionToken = ? WHERE Uid = ?', [sessionToken, openid]);
+                [rows] = await connection.query('UPDATE UserData SET SessionToken = ? WHERE Uid = ?', [sessionToken, openid]);
             }
 
             // 生成 JWT 令牌
@@ -88,7 +105,7 @@ exports.registerUser = async (req, res) => {
             res.json({
                 token,
                 msg: '用户信息更新成功',
-                Integral:0,
+                Integral: 0,
             });
         } finally {
             connection.release(); // 释放连接回到连接池
@@ -144,7 +161,7 @@ exports.loginUser = async (req, res) => {
             const openid = sessionData.openid;
 
             const [rows] = await connection.query('SELECT * FROM UserData WHERE Uid = ?', [openid]);
-            if (rows.length === 0) return res.status(400).json({ msg: '用户不存在' });
+            if (rows.length === 0) return res.status(400).json({ msg: '用户不存在',State:-1 });
 
             const sessionId = generateSessionId();
 
@@ -160,7 +177,8 @@ exports.loginUser = async (req, res) => {
             const payload = {
                 id: rows[0].ID,
                 Uid: openid,
-                sessionId: sessionId
+                sessionId: sessionId,
+                State: rows[0].State
             };
             const avatarUrl = `https://check.free.xrmt.cn/api/users/getImage/${rows[0].ID}/${rows[0].AvatarUrl}`;
             const NickName = rows[0].Name;
@@ -177,7 +195,7 @@ exports.loginUser = async (req, res) => {
                 );
             });
 
-            res.json({ token, NickName, avatarUrl,Integral:rows[0].Integral });
+            res.json({ token, NickName, avatarUrl, Integral: rows[0].Integral,State: rows[0].State });
         } finally {
             connection.release(); // 释放连接回到连接池
         }
@@ -239,7 +257,7 @@ exports.uploadAvatar = async (req, res) => {
                 // 构建头像的完整 URL
                 const avatarUrl = newAvatarFilename;
 
-                res.json({ id, msg: '头像上传成功', avatarUrl });
+                res.json({ id, msg: '头像上传成功', avatarUrl,State: rows[0].State });
             });
         } finally {
             connection.release(); // 释放连接回到连接池
@@ -257,15 +275,21 @@ exports.uploadAvatar = async (req, res) => {
 //返回图片
 exports.getImage = async (req, res) => {
     let connection = await getConnection();
-    const { ID, Name } = req.params;
-    // 检查用户是否存在
+    try {
+        const { ID, Name } = req.params;
+        // 检查用户是否存在
 
-    const [rows] = await connection.query('SELECT * FROM UserData WHERE ID = ?', [ID]);
+        const [rows] = await connection.query('SELECT * FROM UserData WHERE ID = ?', [ID]);
 
-    if (rows.length === 0) {
-        return res.status(404).json({ code: 404, msg: '用户不存在' });
+        if (rows.length === 0) {
+            return res.status(404).json({ code: 404, msg: '用户不存在' });
+        }
+        res.sendFile(path.join(__dirname, '..', 'uploads', 'User', rows[0].Uid, Name));
+    } finally {
+        if (connection) {
+            connection.release(); // 释放连接回到连接池
+        }
     }
-    res.sendFile(path.join(__dirname, '..', 'uploads', 'User', rows[0].Uid, Name));
 };
 
 

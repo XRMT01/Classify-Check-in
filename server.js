@@ -20,10 +20,12 @@ const upload = multer({ storage: storage });
 // 导入路由模块
 const usersRoute = require('./routes/users');
 const checkinsRoute = require('./routes/checkins');
+const goodsRoute = require('./routes/goods');
 
 // 使用路由
 app.use('/api/users', usersRoute);
 app.use('/api/checkins', checkinsRoute);
+app.use('/api/goods', goodsRoute);
 
 // 启动服务器
 const PORT = process.env.PORT || 30006;

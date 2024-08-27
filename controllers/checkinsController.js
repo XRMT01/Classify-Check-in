@@ -54,7 +54,7 @@ exports.createCheckin = async (req, res) => {
         const insertedCheckinId = result.insertId;
 
         // 生成新的 token，包含 CheckinID 和 Uid
-        const token = jwt.sign({ checkinId: insertedCheckinId, Uid: Uid,sessionId:sessionId },process.env.JWT_SECRET, { expiresIn: '1h' });
+        const token = jwt.sign({ checkinId: insertedCheckinId, Uid: Uid, sessionId: sessionId }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
         res.json({ msg: '打卡记录创建成功', checkinId: insertedCheckinId, token }); // 返回成功消息和 CheckinID
     } finally {
@@ -133,7 +133,7 @@ exports.updateCheckin = async (req, res) => {
         try {
             connection = await getConnection();
             const { type } = req.body;
-            const { Uid,checkinId } = req.user; // 从请求体中获取用户 ID
+            const { Uid, checkinId } = req.user; // 从请求体中获取用户 ID
 
             // 更新打卡记录的类型
             const [result] = await connection.query(
@@ -160,6 +160,90 @@ exports.updateCheckin = async (req, res) => {
 };
 
 
+
+
+// 获取特定用户的打卡记录列表
+exports.getUserCheckins = async (req, res) => {
+    let connection;
+    try {
+        try {
+            connection = await getConnection();
+
+            const { Uid } = req.user;
+
+            // 查询数据库
+            const [user] = await connection.query(`SELECT * FROM Checkins WHERE UserId = ?`, [Uid]);
+
+            let result = [];
+            for (let index = 0; index < user.length; index++) {
+                let dateTime = user[index].CheckinTime;
+                console.log(dateTime);
+
+                const dateObj = convertDateTimeToDateObject(dateTime);
+                const imagePaths = user[index].ImagePath.split(",");
+                // 查找当天的数据项
+                const existingItem = result.find(item => item.time.month === dateObj.month && item.time.day === dateObj.day);
+                let Integral_Status = getInIntegral(connection, user[index].Status);
+                if (existingItem) {
+                    // 如果找到了，就添加到现有的数据项中
+                    existingItem.data.push({
+                        title: state(user[index].Status),
+                        status: user[index].Status,
+                        text: Integral_Status.text, // 根据实际情况填写
+                        score: Integral_Status.Integral,
+                        type: GarbageType(user[index].Type), // 这里使用Type作为垃圾类型
+                        images: getCheckinImageUploadUrl(index + 1, addDaysToDate(dateTime, 1), imagePaths[0]) // 根据实际情况填写
+                    });
+                } else {
+                    // 如果没有找到，则创建一个新的数据项
+                    result.push({
+                        time: dateObj,
+                        data: [{
+                            title: state(user[index].Status),
+                            status: user[index].Status,
+                            text: Integral_Status.text, // 根据实际情况填写
+                            score: Integral_Status.Integral,
+                            type: GarbageType(user[index].Type), // 这里使用Type作为垃圾类型
+                            images: getCheckinImageUploadUrl(index + 1, addDaysToDate(dateTime, 1), imagePaths[0]) // 根据实际情况填写
+                        }]
+                    });
+                }
+            }
+
+            res.json({
+                data: result
+            });
+        } finally {
+            connection.release();
+        }
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            msg: "后端出现问题"
+        });
+    } finally {
+        connection.release();
+    }
+};
+
+
+//返回图片
+exports.getImage = async (req, res) => {
+    let connection = await getConnection();
+    try {
+        const { ID, Time, Name } = req.params;
+        // 检查用户是否存在
+
+        const [rows] = await connection.query('SELECT * FROM Checkins WHERE ID = ?', [ID]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ code: 404, msg: '图片不存在' });
+        }
+        res.sendFile(path.join(__dirname, '..', 'uploads', 'User', rows[0].UserId, 'Checkins', Time, Name));
+    } finally {
+        connection.release();
+    }
+};
 
 
 // 扫描二维码
@@ -202,7 +286,7 @@ exports.scanCode = async (req, res) => {
         }
         const [rows] = await connection.query('SELECT * FROM UserData WHERE Uid = ?', [Uid]);
 
-        res.json({ msg: '扫描打卡记录创建成功', checkinId: insertedCheckinId, Integral:rows[0].Integral });
+        res.json({ msg: '扫描打卡记录创建成功', checkinId: insertedCheckinId, Integral: rows[0].Integral });
     } catch (err) {
         console.error(err.message);
         res.status(500).send('服务器错误');
@@ -261,3 +345,80 @@ exports.checkInReview = async (req, res) => {
         connection.release();
     }
 };
+
+
+
+
+
+
+
+
+
+
+
+// 假设 GarbageType 和 state 函数已经定义好
+function GarbageType(type) {
+    // 返回垃圾类型的描述
+    switch (type) {
+        case 'chuyu':
+            return '厨余垃圾';
+        case 'qita':
+            return '其他垃圾';
+        case 'none':
+            return '无';
+        default:
+            return '未知类型';
+    }
+}
+
+function state(status) {
+    // 返回状态的描述
+    switch (status) {
+        case 'approved':
+            return '已批准';
+        case 'rejected':
+            return '已拒绝';
+        case 'pending':
+            return '待审核';
+        default:
+            return '未知状态';
+    }
+}
+// 定义一个辅助函数来将 datetime 字符串转换为包含月份和日期的对象
+function convertDateTimeToDateObject(datetime) {
+    // 转换 datetime 字符串为日期对象
+    const date = new Date(datetime);
+    return {
+        month: date.getMonth() + 1, // 月份是从0开始的，所以需要+1
+        day: date.getDate() // 当前日期
+    };
+}
+
+// 获取得分
+
+function getInIntegral(connection, Status) {
+    switch (Status) {
+        case "pending":
+            return {
+                Integral: 0,
+                text: "无"
+            };
+        default:
+            return {
+                Integral: 0,
+                text: "无"
+            };
+    }
+}
+
+// 获取打卡图片上传地址
+function getCheckinImageUploadUrl(ID, Time, Name) {
+    return `https://check.free.xrmt.cn/api/checkins/getImage/${ID}/${Time}/${Name}`;
+}
+
+//增加日期
+function addDaysToDate(dateTimeString, daysToAdd) {
+    const date = new Date(dateTimeString);
+    date.setDate(date.getDate() + daysToAdd);
+    return date.toISOString().split('T')[0];
+}
